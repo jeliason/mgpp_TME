@@ -27,7 +27,7 @@ set.seed(2023)
 data_load_CRC()
 spot <- "59_A"
 
-df = df_raw %>%
+df <- df_raw %>%
   dplyr::filter(Spot == spot) %>%
   dplyr::mutate(type = forcats::fct_lump_min(type,20)) %>%
   dplyr::filter(type != "Other") %>%

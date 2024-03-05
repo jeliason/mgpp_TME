@@ -6,9 +6,12 @@ data_load_CRC <- function() {
   ROOT_PATH <<- here::here()
   DATA_PATH <<- paste0(ROOT_PATH,"/data/")
 
-  df_raw <<- readr::read_csv(paste0(DATA_PATH,"CRC_cleaned.csv")) %>%
-    dplyr::mutate(type = as.factor(type)) %>%
-    dplyr::rename(Spot = spots)
+  df_raw1 <- readr::read_csv(paste0(DATA_PATH,"first_half_CRC_cleaned.csv"))
+
+  df_raw2 <- readr::read_csv(paste0(DATA_PATH,"second_half_CRC_cleaned.csv"))
+
+  df_raw <<- bind_rows(df_raw1, df_raw2) %>%
+    dplyr::mutate(type = as.factor(type))
 
   load_pt_data(DATA_PATH = DATA_PATH)
 
