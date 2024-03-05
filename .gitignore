@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rprofile
+*.Rproj
+*.html
+*_cache/
+*_files/
+renv*
+data

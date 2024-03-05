@@ -1,0 +1,504 @@
+---
+title: "MGPP example workflow"
+format: html
+---
+
+```{r,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ppjsdm)
+library(pals)
+library(spatstat)
+library(survival)
+library(survminer)
+library(kableExtra)
+
+source("utils.R")
+```
+
+Welcome to the tutorial vignette for the paper "Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns". Here, I will be demonstrating how to run the analyses and create the figures that are demonstrated in the Example Analysis from that paper. To run all of the analyses in this vignette, you should install a fork of the `ppjsdm` package from my Github using `devtools::install_github("jeliason/ppjsdm")`. This is a fork of Ian Flint's fantastic `ppjsdm` package, which he details in "The Saturated Pairwise Interaction Gibbs Point Process as a Joint Species Distribution Model" - check out his work! My fork just adds one small piece of functionality to allow for calculation of the linear predictor of the conditional intensity function, as I show below.
+
+### DATA INPUT
+
+Here, we load the data that is used in the paper, using `data_load_CRC()`. I am using a slightly cleaned-up and preprocessed version of the CODEX data from 35 colorectal cancer patients, as made publicly available from the paper "Coordinated Cellular Neighborhoods Orchestrate Antitumoral Immunity at the Colorectal Cancer Invasive Front" by Schurch et al, 2020.
+
+```{r}
+set.seed(2023)
+
+data_load_CRC()
+spot <- "59_A"
+
+df = df_raw %>%
+  dplyr::filter(Spot == spot) %>%
+  dplyr::mutate(type = forcats::fct_lump_min(type,20)) %>%
+  dplyr::filter(type != "Other") %>%
+  droplevels()
+```
+
+We will be demonstrating the MGPP method in this first part on spot 59_A. Here, we can see the abundance of each cell type from that spot:
+
+```{r}
+table(df$type)
+```
+
+We can visualize the nearest-neighbor distance to vasculature cells at each point in space:
+
+```{r}
+nndist_vasculature <- nndist_cell_type(df,type = "vasculature")
+nndist_vasculature %>%
+  as.data.frame() %>%
+  ggplot(aes(x,y,fill=value)) +
+  geom_tile() +
+  scico::scale_fill_scico(direction = 1) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x="X",y="Y",fill="Distance to \nnearest \nvasculature")
+```
+
+Additionally, we can plot the spatial distribution of each cell type as well:
+
+```{r}
+region_var <- region_encoding(df)
+x_range = c(min(df$X),max(df$X))
+y_range = c(min(df$Y),max(df$Y))
+df <- df %>%
+  filter(type != "vasculature") %>%
+  droplevels()
+config <- Configuration(df$X,df$Y,df$type)
+window <- Rectangle_window(x_range,y_range)
+
+# point pattern plot
+
+df %>%
+  ggplot(aes(X,Y,color=type,shape=type)) +
+  geom_point() +
+  scale_color_manual(values = as.vector(glasbey(nlevels(df$type)))) +
+  scale_shape_manual(values=1:nlevels(df$type)) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank()) +
+  labs(x = "X",y = "Y",color="Types",shape="Types")
+```
+
+Finally, we can visualize the interaction potentials that we could use during model fitting to quantify the interaction strength between cell types:
+
+```{r}
+r=seq(0,100,1)
+tibble(r=r,exp1=exp(-r*log(2)/30),exp2=exp(-r*log(2)/80),sqb1=1-exp(-(30^2*log(2)/r^2)),sqb2=1-exp(-(60^2*log(2)/r^2))) %>%
+  pivot_longer(-r) %>%
+  ggplot(aes(r,value,color=name)) +
+  geom_line(linewidth=2) +
+  guides(color="none") +
+  labs(x = "Distance",
+       y = "Potential") +
+  theme_minimal()
+```
+
+### MODEL FITTING
+
+Now we turn to fitting the MGPP model that is detailed in our paper and Ian Flint's paper:
+
+```{r}
+R <- 30
+saturation <- 5
+
+number_of_species <- length(levels(df$type))
+short_range <- matrix(R, number_of_species, number_of_species)
+medium_range <- matrix(70, number_of_species, number_of_species)
+long_range <- matrix(150, number_of_species, number_of_species)
+
+covariates <- list()
+covariates$outside = region_var$outside_var
+covariates$vasc_dist <- nndist_vasculature
+# covariates <- NULL
+n_dummy <- 5e3
+
+types <- levels(df$type)
+
+args = list(configuration = config,
+            window = window,
+            covariates = covariates,
+            model = "exponential",
+            medium_range_model = "exponential",
+            short_range = short_range,
+            medium_range = medium_range,
+            long_range = long_range,
+            fitting_package = "glmnet",
+            dummy_distribution = "binomial",
+            saturation = saturation,
+            min_dummy = n_dummy,
+            max_dummy = n_dummy,
+            debug = TRUE,
+            nthreads = 2L)
+tm <- Sys.time()
+ppjsdm_fit <- do.call(gibbsm,args)
+print(Sys.time() - tm)
+```
+
+as well as estimating the standard errors of each interaction estimate: 
+
+```{r,cache=TRUE}
+tm <- Sys.time()
+ppjsdm_fit.summary <- summary(ppjsdm_fit, nthreads = 1, debug = FALSE)
+print(Sys.time() - tm)
+```
+
+```{r}
+ppjsdm_fit.summary
+```
+
+Here, we can see how much the intensity of each cell type is associated with the nearest-neighbor distance to vasculature:
+
+```{r}
+nms <- rownames(ppjsdm_fit.summary$se$alpha[[1]])
+
+nms_tib <- tibble(type=nms,num_type=1:length(nms))
+beta_coefs = c("vasc_dist")
+d <- ppjsdm_fit.summary$coefficients %>%
+  as_tibble(rownames = "coef_name") %>%
+  filter(stringr::str_detect(coef_name,stringr::str_c(beta_coefs, collapse = "|"))) %>%
+  separate(coef_name,into = c("coef","type1"),sep="_(?=[^_]+$)") %>%
+  mutate(type1=as.numeric(type1)) %>%
+  left_join(nms_tib,by=c("type1"="num_type")) %>%
+  select(-type1)
+
+d %>%
+  select(type,coefficients,CI95_lo,CI95_hi) %>%
+  mutate(estimate = formatC(coefficients,format = "e", digits=1)) %>%
+  mutate(CI = paste0("(",formatC(CI95_lo,format = "e", digits =1),", ",formatC(CI95_hi,format = "e",digits=1),")")) %>%
+  select(-c(coefficients,CI95_lo,CI95_hi)) %>%
+  kable(booktabs = T) %>%
+  kable_paper(full_width=F)
+```
+
+We can also visualize the interaction coefficients from short- and medium-range interactions as well. Here, short-range interactions are on the left, while medium-range are on the right. The fill color indicates the effect size, while the star indicates whether each estimated interaction is estimated to be statistically significant.
+
+```{r}
+a_df <- plot_coef(ppjsdm_fit.summary,coef="alpha",return_df = T)$df
+g_df <- plot_coef(ppjsdm_fit.summary,coef="gamma",return_df = T)$df
+
+bind_rows(mutate(a_df,name="alpha"),mutate(g_df,name="gamma")) %>%
+  ggplot(aes(type1,type2,fill=coefficients)) +
+  geom_tile(color="black") +
+  anglex() +
+  sig_stars(p_values="Pval") +
+  scale_fill_gradient2() +
+  labs(x = "Cell type",
+       y = "Cell type",
+       fill = "Parameter") +
+  theme_minimal() +
+  anglex() +
+  theme(axis.text = element_text(size=12)) +
+  facet_wrap(~name)
+```
+
+Multiplying each of these coefficients by the interaction potential that was used (here, the exponential for both short- and medium-range interactions) yields the actual interaction over spatial scales that exists between each pair of cell types. We can visualize these one at a time:
+
+```{r}
+plot_potentials(ppjsdm_fit,type1 = "B cells",type2 = "memory CD4+ T") +
+  labs(title = "", x = "Distance",y = "Interaction") +
+  theme_minimal()
+```
+
+Or in a pairwise fashion between a subset of cell types:
+
+```{r}
+plot_all_potentials(ppjsdm_fit,types = c("B cells","CD163+ macros","memory CD4+ T","Tregs","tumor cells")) +
+  theme_minimal() +
+  labs(x = "Distance",y = "Interaction",color="Potential") +
+  theme(strip.text.y.right = element_text(angle=-45))
+```
+
+We can also recover the linear predictor of the conditional intensity for a given cell type. Here, we recover the linear predictor for tumor cells, and then plot, at each location in space, which of the cell types contributes the most to predicting the presence of tumor cells at that location.
+
+```{r,cache=TRUE}
+fit <- ppjsdm_fit
+x <- seq(fit$window$x_range[1],fit$window$x_range[2],length.out=100)
+y <- seq(fit$window$y_range[1],fit$window$y_range[2],length.out=100)
+
+coords <- as.data.frame(expand.grid(x=x,y=y))
+lin_pred <- ppjsdm:::model_matrix_papangelou.default(configuration = fit$configuration_list[[1]],
+                                                     x = coords$x,
+                                                     y = coords$y,
+                                                     type = "tumor cells",
+                                                     mark = 1.0,
+                                                     model = fit$parameters$model,
+                                                     medium_range_model = fit$parameters$medium_range_model,
+                                                     alpha = fit$coefficients$alpha,
+                                                     beta0 = fit$coefficients$beta0,
+                                                     beta = fit$coefficients$beta,
+                                                     gamma = fit$coefficients$gamma,
+                                                     covariates = fit$parameters$covariates,
+                                                     short_range = fit$coefficients$short_range,
+                                                     medium_range = fit$coefficients$medium_range,
+                                                     long_range = fit$coefficients$long_range,
+                                                     nthreads = 2,
+                                                     saturation = fit$parameters$saturation)
+
+lin_pred %>%
+  dplyr::select(dplyr::contains("mr") | dplyr::contains("sr")) %>%
+  tibble::rownames_to_column() %>%
+  tidyr::pivot_longer(-1, names_to = c(".value", "set"), names_sep = "[_]") -> d
+
+sum_cols <- colnames(d)[-(1:2)]
+
+d <- d %>%
+  dplyr::mutate(overall = purrr::pmap_dbl(list(!!!rlang::parse_exprs(sum_cols)),sum)) %>%
+  tidyr::pivot_wider(names_from = set,values_from = c(!!!rlang::parse_exprs(sum_cols),overall))
+
+lin_pred <- lin_pred %>%
+  tibble::rownames_to_column() %>%
+  dplyr::left_join(d) %>%
+  dplyr::select(-rowname) %>%
+  dplyr::relocate(x,y)
+
+top_linpred <- lin_pred %>%
+  select(x,y,contains("overall"),beta0) %>%
+  pivot_longer(-c(x,y)) %>%
+  group_by(x,y) %>%
+  top_n(1,abs(value)) %>%
+  ungroup() %>%
+  select(-value) %>%
+  mutate(name = factor(name)) %>%
+  rename(top_pred = name)
+
+top_linpred %>%
+  filter(!(top_pred %in% c("outside"))) %>%
+  mutate(top_pred = as.character(top_pred)) %>%
+  mutate(top_pred = ifelse(top_pred == "beta0","tumor cells",top_pred)) %>%
+  mutate(top_pred = gsub("overall_","",top_pred)) %>%
+  ggplot(aes(x,y,fill=top_pred)) +
+  geom_tile() +
+  scale_fill_manual(values=as.vector(tableau20(n=length(unique(top_linpred$top_pred))))) +
+  theme_minimal() +
+  labs(x = "X", y = "Y",fill="Top \npredictor")
+```
+
+Next, we can estimate the AUC of each estimated conditional intensity, that is, how well the conditional intensity of each cell type correlates with the locations of each cell type.
+
+```{r,cache=TRUE}
+# papangelou
+start <- Sys.time()
+papangelous <- get_papangelous(ppjsdm_fit,nthreads = 2)
+Sys.time() - start
+
+aucs <- auc_papangelous(papangelous,ppjsdm_fit)
+
+aucs %>%
+  arrange(AUC)
+```
+
+We can also visualize this conditional intensity for, eg, plasma cells:
+
+```{r}
+# plot papangelou
+plot_papangelous(papangelous,ppjsdm_fit,types = c("plasma cells"))[[1]] +
+  theme_minimal() +
+  labs(title = "",x = "X",y = "Y", fill = "log-conditional \nintensity")
+```
+
+### INTEGRATING ACROSS MULTIPLE PATIENTS
+
+Here, I include model fits as estimated on each of the 140 images from the Schurch et al dataset. The model estimation proceeds just as it did for the model fit on spot 59_A above. I have included code in the script "hpc.R" for fitting these models in parallel on a cluster. 
+```{r}
+models <- readRDS("data/fits_outside_vasc.rds")
+
+slide_ids <- pt_data$Spot
+```
+
+We can also see the median AUC of each cell type in each patient group:
+
+```{r}
+aucs <- lapply(models,\(m) enframe(m$aucs) %>% mutate(Spot=m$spot)) %>%
+  bind_rows() %>%
+  rename(type=name,AUC=value)
+
+aucs %>%
+  left_join(pt_data,by="Spot") %>%
+  group_by(type) %>%
+  summarise(All = round(median(AUC),2)) -> all_auc
+
+aucs %>%
+  left_join(pt_data,by="Spot") %>%
+  group_by(type,Group) %>%
+  summarise(AUC = round(median(AUC),2)) %>%
+  pivot_wider(names_from = Group,values_from = AUC) %>%
+  right_join(all_auc) %>%
+  kable(booktabs = T) %>%
+  kable_paper(full_width=F) %>%
+  add_header_above(c(" ", "AUC" = 3))
+```
+
+as well as the correlation of the abundance of each cell type with the AUC of that cell type:
+
+```{r}
+aucs %>%
+  left_join(df_raw %>% count(type,Spot)) %>%
+  group_by(type) %>%
+  summarise(correlation = round(cor(AUC,n),2)) %>%
+  kable(booktabs = T) %>%
+  kable_paper(full_width=F)
+```
+
+Let's collect all of the coefficients for short- and medium-range interactions into dataframes.
+
+```{r}
+gamma <- map(1:length(models),\(i) {
+  model <- models[[i]]
+  types <- df_raw %>%
+    filter(Spot == model$spot) %>%
+    filter(type != "vasculature") %>%
+    pull(type) %>%
+    unique() %>%
+    as.vector()
+
+  coefs_from_summary(model$summary,types) %>%
+    filter(str_detect(name,"gamma")) %>%
+    mutate(Spot = model$spot) %>%
+    rename(gamma=coefficients) %>%
+    select(-name)
+}) %>%
+  bind_rows()
+
+alpha <- map(1:length(models),\(i) {
+  model <- models[[i]]
+  types <- df_raw %>%
+    filter(Spot == model$spot) %>%
+    filter(type != "vasculature") %>%
+    pull(type) %>%
+    unique() %>%
+    as.vector()
+
+  coefs_from_summary(model$summary,types) %>%
+    filter(str_detect(name,"alpha")) %>%
+    mutate(Spot = model$spot) %>%
+    rename(alpha=coefficients) %>%
+    select(-name)
+}) %>%
+  bind_rows()
+```
+
+Next, let's examine the heterogeneity in interaction effect estimates across all patients by estimating the median absolute deviation (MAD) of each coefficient:
+
+```{r}
+alpha %>%
+  left_join(pt_data) %>%
+  group_by(type1,type2) %>%
+  summarise(sd_coef = sd(alpha,na.rm = T),
+            MAD = mad(alpha,na.rm = T)) %>%
+  ungroup() -> d
+
+d %>%
+  mutate(temp = type2,
+         type2 = type1,
+         type1 = temp) %>%
+  select(-temp) -> flipped
+
+bind_rows(d,flipped) %>%
+  drop_na() %>%
+  ggplot(aes(type1,type2,fill=MAD)) +
+  geom_tile() +
+  anglex() +
+  scico::scale_fill_scico(palette = "davos",direction = -1) +
+  labs(x = "Cell type",y = "Cell type")
+```
+
+Let's do the same within each patient group:
+
+```{r}
+alpha %>%
+  left_join(pt_data) %>%
+  group_by(type1,type2,Group) %>%
+  summarise(sd_coef = sd(alpha,na.rm = T),
+            MAD = mad(alpha,na.rm = T)) %>%
+  ungroup() -> d
+
+d %>%
+  mutate(temp = type2,
+         type2 = type1,
+         type1 = temp) %>%
+  select(-temp) -> flipped
+
+bind_rows(d,flipped) %>%
+  drop_na() %>%
+  ggplot(aes(type1,type2,fill=MAD)) +
+  geom_tile() +
+  theme_minimal() +
+  anglex() +
+  scico::scale_fill_scico(palette= "davos",direction = -1) +
+  facet_wrap(~Group,ncol = 2) +
+  labs(x = "Cell type",y = "Cell type") 
+```
+
+Lastly, let's see how well each interaction predicts patient outcomes. We do that by fitting univariate Cox PH models to each interaction coefficient, as detailed in the paper:
+
+```{r}
+gamma_df <- gamma %>%
+  left_join(pt_data) %>%
+  filter(!is.na(gamma)) %>%
+  group_by(type1,type2) %>%
+  group_modify(~{
+    tryCatch({
+      if(nrow(.x) < 10) stop("Sample size is too small!")
+      coxph(Surv(OS,OS_Censor)~gamma+Age+Sex,data=.x,cluster=Patient)
+    },error=\(e) {
+      # print(e) 
+      NULL
+      },
+    warning = \(w) {
+      print(w)
+      NULL
+    }) %>%
+      broom::tidy(conf.int=TRUE)
+  }) %>%
+  ungroup() %>%
+  filter(term == "gamma") %>%
+  filter(!str_detect(term,"Intercept")) %>%
+  mutate(p.adj = p.adjust(p.value,method="fdr"))
+
+alpha_df <- alpha %>%
+  left_join(pt_data) %>%
+  # group_by(type1,type2,Patient,OS,OS_Censor) %>%
+  # summarise(alpha=median(alpha,na.rm=T)) %>%
+  group_by(type1,type2) %>%
+  group_modify(~{
+    tryCatch({
+      # lm(alpha~Group,data=.x)
+      if(nrow(.x) < 10) stop("Sample size is too small!")
+      coxph(Surv(OS,OS_Censor)~alpha+Age+Sex,data=.x,cluster=Patient)
+        # coxph(Surv(OS,OS_Censor)~alpha,data=.x)
+    },
+    error=\(e) {
+      # print(e)
+      NULL
+    },
+    warning=\(w) {
+      print(w)
+      NULL
+    }) %>%
+      broom::tidy(conf.int=TRUE)
+  }) %>%
+  ungroup() %>%
+  filter(!str_detect(term,"Intercept")) %>%
+  mutate(p.adj = p.adjust(p.value,method="fdr"))
+```
+
+We can plot these coefficients in a forest plot:
+
+```{r}
+gamma_df <- gamma_df %>%
+  mutate(name = "gamma")
+alpha_df %>%
+  mutate(name = "alpha") %>%
+  bind_rows(gamma_df) %>%
+  mutate(p.adj = p.adjust(p.value,method = "fdr")) %>%
+  filter(p.adj < 0.05) %>%
+  unite(t1_t2,type1,type2,sep = " <-> ") %>%
+  ggplot(aes(estimate,t1_t2)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin=conf.low,xmax=conf.high,y=t1_t2),height=0) +
+  geom_vline(xintercept = 0,color="red") +
+  labs(x="Parameter",y="Pairs of types") +
+  facet_wrap(~name) +
+  theme_minimal()
+```
+
