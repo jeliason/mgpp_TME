@@ -1,10 +1,9 @@
 # MGPP modeling for Tissue Data
 
-[![DOI](https://zenodo.org/badge/767630222.svg)](https://doi.org/10.5281/zenodo.15809278)
+This repository contains code for the paper:
 
-This repository contains code and data for the paper:
-
-*Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns* (Eliason & Rao 2025)
+**Eliason & Rao (2024)**  
+*[Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns](https://doi.org/10.51387/24-NEJSDS66)*
 
 We present a statistically rigorous framework for analyzing spatial cell–cell interactions in the tumor microenvironment (TME) using multitype Gibbs point process (MGPP) models. These models are implemented as joint species distribution models (JSDMs) to quantify spatial attraction and repulsion among annotated cell types in multiplexed colorectal cancer images.
 
@@ -69,7 +68,7 @@ Rscript hpc.R
 
 ## Citation
 
-Please cite the manuscript if you use this code or data:
+Please cite [our paper](https://doi.org/10.51387/24-NEJSDS66) if you use this code or data:
 
 ```bibtex
 @article{eliason2024,
