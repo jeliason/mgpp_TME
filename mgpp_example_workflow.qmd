@@ -1,6 +1,11 @@
 ---
-title: "MGPP example workflow"
-format: html
+title: "Example workflow of fitting an MGPP model to tissue data"
+format:
+  html:
+    embed-resources: true   # embeds images, CSS, JS, etc.
+bibliography: refs.bib       # <- your .bib file
+csl: nature.csl              # <- optional: any CSL file you like
+link-citations: true         # optional: turns each citekey into a hyperlink
 ---
 
 ```{r,message=FALSE,warning=FALSE}
@@ -15,13 +20,13 @@ library(kableExtra)
 source("utils.R")
 ```
 
-Welcome to the tutorial vignette for the paper "Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns". Here, I will be demonstrating how to run the analyses and create the figures that are demonstrated in the Example Analysis from that paper. To run all of the analyses in this vignette, you should install a fork of the `ppjsdm` package from my Github using `devtools::install_github("jeliason/ppjsdm")`. This is a fork of Ian Flint's fantastic `ppjsdm` package, which he details in "The Saturated Pairwise Interaction Gibbs Point Process as a Joint Species Distribution Model" - check out his work! My fork just adds one small piece of functionality to allow for calculation of the linear predictor of the conditional intensity function, as I show below.
+Welcome to the tutorial vignette for the paper "Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns" [@eliason2024]. Here, I will be demonstrating how to run the analyses and create the figures that are demonstrated in the Example Analysis from that paper. To run all of the analyses in this vignette, you should install a fork of the fantastic `ppjsdm` package[@flint2022] from my Github using `devtools::install_github("jeliason/ppjsdm")`. My fork just adds one small piece of functionality to allow for calculation of the linear predictor of the conditional intensity function, as I show below.
 
 ### DATA INPUT
 
-Here, we load the data that is used in the paper, using `data_load_CRC()`. I am using a slightly cleaned-up and preprocessed version of the CODEX data from 35 colorectal cancer patients, as made publicly available from the paper "Coordinated Cellular Neighborhoods Orchestrate Antitumoral Immunity at the Colorectal Cancer Invasive Front" by Schurch et al, 2020.
+Here, we load the data that is used in the paper, using `data_load_CRC()`. I am using a slightly cleaned-up and preprocessed version of the CODEX data from 35 colorectal cancer patients [@schurch2020].
 
-```{r}
+```{r,message=FALSE,warning=FALSE}
 set.seed(2023)
 
 data_load_CRC()
@@ -51,7 +56,7 @@ nndist_vasculature %>%
   scico::scale_fill_scico(direction = 1) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
-  labs(x="X",y="Y",fill="Distance to \nnearest \nvasculature")
+  labs(x="X (microns)",y="Y (microns)",fill="Distance to \nnearest \nvasculature")
 ```
 
 Additionally, we can plot the spatial distribution of each cell type as well:
@@ -76,7 +81,7 @@ df %>%
   theme_minimal() +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank()) +
-  labs(x = "X",y = "Y",color="Types",shape="Types")
+  labs(x = "X (microns)",y = "Y (microns)",color="Types",shape="Types")
 ```
 
 Finally, we can visualize the interaction potentials that we could use during model fitting to quantify the interaction strength between cell types:
@@ -88,8 +93,8 @@ tibble(r=r,exp1=exp(-r*log(2)/30),exp2=exp(-r*log(2)/80),sqb1=1-exp(-(30^2*log(2
   ggplot(aes(r,value,color=name)) +
   geom_line(linewidth=2) +
   guides(color="none") +
-  labs(x = "Distance",
-       y = "Potential") +
+  labs(x = "Distance (microns)",
+       y = "Interaction strength") +
   theme_minimal()
 ```
 
@@ -134,16 +139,16 @@ ppjsdm_fit <- do.call(gibbsm,args)
 print(Sys.time() - tm)
 ```
 
+```{r}
+pots <- potentials(ppjsdm_fit)
+```
+
 as well as estimating the standard errors of each interaction estimate: 
 
 ```{r,cache=TRUE}
 tm <- Sys.time()
 ppjsdm_fit.summary <- summary(ppjsdm_fit, nthreads = 1, debug = FALSE)
 print(Sys.time() - tm)
-```
-
-```{r}
-ppjsdm_fit.summary
 ```
 
 Here, we can see how much the intensity of each cell type is associated with the nearest-neighbor distance to vasculature:
@@ -270,7 +275,7 @@ top_linpred %>%
   geom_tile() +
   scale_fill_manual(values=as.vector(tableau20(n=length(unique(top_linpred$top_pred))))) +
   theme_minimal() +
-  labs(x = "X", y = "Y",fill="Top \npredictor")
+  labs(x = "X (microns)", y = "Y (microns)",fill="Top \npredictor")
 ```
 
 Next, we can estimate the AUC of each estimated conditional intensity, that is, how well the conditional intensity of each cell type correlates with the locations of each cell type.
@@ -293,12 +298,12 @@ We can also visualize this conditional intensity for, eg, plasma cells:
 # plot papangelou
 plot_papangelous(papangelous,ppjsdm_fit,types = c("plasma cells"))[[1]] +
   theme_minimal() +
-  labs(title = "",x = "X",y = "Y", fill = "log-conditional \nintensity")
+  labs(title = "",x = "X (microns)",y = "Y (microns)", fill = "log-conditional \nintensity")
 ```
 
 ### INTEGRATING ACROSS MULTIPLE PATIENTS
 
-Here, I include model fits as estimated on each of the 140 images from the Schurch et al dataset. The model estimation proceeds just as it did for the model fit on spot 59_A above. I have included code in the script "hpc.R" for fitting these models in parallel on a cluster. 
+Here, I include model fits as estimated on each of the 140 images from the Schurch et al dataset[@schurch2020]. The model estimation proceeds just as it did for the model fit on spot 59_A above. I have included code in the script "hpc.R" for fitting these models in parallel on a cluster. 
 ```{r}
 models <- readRDS("data/fits_outside_vasc.rds")
 
@@ -326,6 +331,16 @@ aucs %>%
   kable(booktabs = T) %>%
   kable_paper(full_width=F) %>%
   add_header_above(c(" ", "AUC" = 3))
+```
+
+
+```{r}
+df_raw %>%
+  left_join(pt_data %>% select(Spot,Group)) %>%
+  count(type,Spot,Group) %>%
+  group_by(type,Group) %>%
+  summarise(median = median(n)) %>%
+  pivot_wider(names_from = Group,values_from = median)
 ```
 
 as well as the correlation of the abundance of each cell type with the AUC of that cell type:
@@ -375,6 +390,47 @@ alpha <- map(1:length(models),\(i) {
     select(-name)
 }) %>%
   bind_rows()
+```
+
+```{r}
+pt_data %>%
+  filter(Group == "CLR") %>%
+  group_by(Patient) %>%
+  slice(3:4) %>%
+  select(Patient,Group,Spot) %>% pull(Spot) -> throwout_spots
+
+```
+
+```{r}
+alpha %>%
+  left_join(gamma) %>%
+  left_join(pt_data %>% select(Spot,Group)) %>%
+  pivot_longer(c(alpha,gamma)) %>%
+  # filter(!(Spot %in% throwout_spots)) %>%
+  # mutate(Group = ifelse(Spot %in% throwout_spots,"DII",Group)) %>%
+  group_by(type1,type2,name) %>%
+  group_modify(~{
+    tryCatch({
+      wilcox.test(value ~ Group,data=.x,conf.int = T)
+      },error=\(e) {
+        # print(e)
+        NULL
+      },warning=\(w) NULL) %>%
+      broom::tidy()
+      # mutate(estimate = median(.x$value[.x$Group == "DII"] - .x$value[.x$Group == "CLR"]))
+  }) %>%
+  ungroup() %>%
+  # filter(!str_detect(term,"Intercept")) %>%
+  mutate(p.adj = p.adjust(p.value)) %>%
+  ggplot(aes(type1,type2,fill=estimate)) +
+  geom_tile() +
+  facet_wrap(~name) +
+  theme_bw() +
+  sig_stars(p_values = "p.value") +
+  anglex() +
+  scico::scale_fill_scico(palette="bam") +
+  labs(x="Type 1",y="Type 2",fill="Median\ndifference")
+  
 ```
 
 Next, let's examine the heterogeneity in interaction effect estimates across all patients by estimating the median absolute deviation (MAD) of each coefficient:
@@ -497,8 +553,8 @@ alpha_df %>%
   geom_point() +
   geom_errorbarh(aes(xmin=conf.low,xmax=conf.high,y=t1_t2),height=0) +
   geom_vline(xintercept = 0,color="red") +
-  labs(x="Parameter",y="Pairs of types") +
-  facet_wrap(~name) +
+  labs(x="log-HR",y="Pairs of types") +
+  facet_wrap(~name,scales = "free_x") +
   theme_minimal()
 ```
 

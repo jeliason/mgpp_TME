@@ -180,7 +180,8 @@ plot_potentials <- function(fit,type1,type2,return_df=FALSE) {
     ggplot2::guides(linetype="none") +
     ggplot2::ggtitle(paste0("Interaction potential between ", type1, " and ", type2))
 
-  print(p)
+  p
+  # print(p)
 }
 
 get_papangelous <- function(fit,nthreads=1) {

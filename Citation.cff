@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "mgpp_TME: Reproducible multitype Gibbs point process analysis for the tumor microenvironment"
+version: "v1.0.0"
+doi: "10.5281/zenodo.1234567"
+date-released: "2025-01-01"
+url: "https://github.com/jeliason/mgpp_TME"
+repository-code: "https://github.com/jeliason/mgpp_TME"
+abstract: "A statistically rigorous framework for analyzing spatial cell–cell interactions in the tumor microenvironment (TME) using multitype Gibbs point process (MGPP) models implemented as joint species distribution models (JSDMs)."
+keywords:
+  - "spatial statistics"
+  - "tumor microenvironment"
+  - "point processes"
+  - "cell-cell interactions"
+  - "ecological modeling"
+  - "multiplex imaging"
+  - "spatial omics"
+  - "colorectal cancer"
+license: "MIT"
+authors:
+  - family-names: "Eliason"
+    given-names: "Joel"
+    email: "joelne@umich.edu"
+    orcid: "https://orcid.org/0000-0003-2227-8727"
+  - family-names: "Rao"
+    given-names: "Arvind"
+preferred-citation:
+  type: article
+  title: "Investigating Ecological Interactions in the Tumor Microenvironment Using Joint Species Distribution Models for Point Patterns"
+  authors:
+    - family-names: "Eliason"
+      given-names: "Joel"
+    - family-names: "Rao"
+      given-names: "Arvind"
+  journal: "The New England Journal of Statistics in Data Science"
+  volume: 2
+  number: 3
+  pages: "296-310"
+  publisher: "New England Statistical Society"
+  issn: "2693-7166"
+  year: 2024
+  month: 6
+  doi: "10.51387/24-NEJSDS66"
