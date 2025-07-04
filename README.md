@@ -1,5 +1,7 @@
 # MGPP modeling for Tissue Data
 
+[![DOI](https://zenodo.org/badge/767630222.svg)](https://doi.org/10.5281/zenodo.15809278)
+
 This repository contains code and data for the paper:
 
 *Investigating Ecological Interactions in the Tumor Microenvironment using Joint Species Distribution Models for Point Patterns* (Eliason & Rao 2025)
