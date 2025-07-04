@@ -2,10 +2,10 @@
 title: "Example workflow of fitting an MGPP model to tissue data"
 format:
   html:
-    embed-resources: true   # embeds images, CSS, JS, etc.
-bibliography: refs.bib       # <- your .bib file
-csl: nature.csl              # <- optional: any CSL file you like
-link-citations: true         # optional: turns each citekey into a hyperlink
+    embed-resources: true
+bibliography: refs.bib
+csl: nature.csl
+link-citations: true
 ---
 
 ```{r,message=FALSE,warning=FALSE}
