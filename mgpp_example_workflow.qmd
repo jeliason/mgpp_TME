@@ -1,8 +1,8 @@
 ---
 title: "Example workflow of fitting an MGPP model to tissue data"
-format:
-  html:
-    embed-resources: false
+format: pdf
+    # fig-width: 5
+    # fig-height: 3.5
 bibliography: refs.bib
 csl: nature.csl
 link-citations: true
@@ -62,9 +62,12 @@ nndist_vasculature %>%
   ggplot(aes(x,y,fill=value)) +
   geom_tile() +
   scico::scale_fill_scico(direction = 1) +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
-  labs(x="X (microns)",y="Y (microns)",fill="Distance to \nnearest \nvasculature")
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  labs(x="X (microns)",y="Y (microns)",
+       fill="Distance to \nnearest \nvasculature")
 ```
 
 Additionally, we can plot the spatial distribution of each cell type as well:
@@ -96,7 +99,10 @@ Finally, we can visualize the interaction potentials that we could use during mo
 
 ```{r}
 r=seq(0,100,1)
-tibble(r=r,exp1=exp(-r*log(2)/30),exp2=exp(-r*log(2)/80),sqb1=1-exp(-(30^2*log(2)/r^2)),sqb2=1-exp(-(60^2*log(2)/r^2))) %>%
+tibble(r=r,exp1=exp(-r*log(2)/30),
+       exp2=exp(-r*log(2)/80),
+       sqb1=1-exp(-(30^2*log(2)/r^2)),
+       sqb2=1-exp(-(60^2*log(2)/r^2))) %>%
   pivot_longer(-r) %>%
   ggplot(aes(r,value,color=name)) +
   geom_line(linewidth=2) +
@@ -108,7 +114,8 @@ tibble(r=r,exp1=exp(-r*log(2)/30),exp2=exp(-r*log(2)/80),sqb1=1-exp(-(30^2*log(2
 
 ### MODEL FITTING
 
-Now we turn to fitting the MGPP model that is detailed in our paper and Ian Flint's paper:
+Now we turn to fitting the MGPP model that is detailed in our paper and the
+Flint et al. paper:
 
 ```{r}
 R <- 30
@@ -168,7 +175,9 @@ nms_tib <- tibble(type=nms,num_type=1:length(nms))
 beta_coefs = c("vasc_dist")
 d <- ppjsdm_fit.summary$coefficients %>%
   as_tibble(rownames = "coef_name") %>%
-  filter(stringr::str_detect(coef_name,stringr::str_c(beta_coefs, collapse = "|"))) %>%
+  filter(stringr::str_detect(coef_name,
+                             stringr::str_c(beta_coefs,
+                             collapse = "|"))) %>%
   separate(coef_name,into = c("coef","type1"),sep="_(?=[^_]+$)") %>%
   mutate(type1=as.numeric(type1)) %>%
   left_join(nms_tib,by=c("type1"="num_type")) %>%
@@ -177,7 +186,8 @@ d <- ppjsdm_fit.summary$coefficients %>%
 d %>%
   select(type,coefficients,CI95_lo,CI95_hi) %>%
   mutate(estimate = formatC(coefficients,format = "e", digits=1)) %>%
-  mutate(CI = paste0("(",formatC(CI95_lo,format = "e", digits =1),", ",formatC(CI95_hi,format = "e",digits=1),")")) %>%
+  mutate(CI = paste0("(",formatC(CI95_lo,format = "e", digits =1),", ",
+                     formatC(CI95_hi,format = "e",digits=1),")")) %>%
   select(-c(coefficients,CI95_lo,CI95_hi)) %>%
   kable(booktabs = T) %>%
   kable_paper(full_width=F)
@@ -215,7 +225,9 @@ plot_potentials(ppjsdm_fit,type1 = "B cells",type2 = "memory CD4+ T") +
 Or in a pairwise fashion between a subset of cell types:
 
 ```{r}
-plot_all_potentials(ppjsdm_fit,types = c("B cells","CD163+ macros","memory CD4+ T","Tregs","tumor cells")) +
+plot_all_potentials(ppjsdm_fit,types = c("B cells","CD163+ macros",
+                                         "memory CD4+ T","Tregs",
+                                         "tumor cells")) +
   theme_minimal() +
   labs(x = "Distance",y = "Interaction",color="Potential") +
   theme(strip.text.y.right = element_text(angle=-45))
@@ -229,34 +241,38 @@ x <- seq(fit$window$x_range[1],fit$window$x_range[2],length.out=100)
 y <- seq(fit$window$y_range[1],fit$window$y_range[2],length.out=100)
 
 coords <- as.data.frame(expand.grid(x=x,y=y))
-lin_pred <- ppjsdm:::model_matrix_papangelou.default(configuration = fit$configuration_list[[1]],
-                                                     x = coords$x,
-                                                     y = coords$y,
-                                                     type = "tumor cells",
-                                                     mark = 1.0,
-                                                     model = fit$parameters$model,
-                                                     medium_range_model = fit$parameters$medium_range_model,
-                                                     alpha = fit$coefficients$alpha,
-                                                     beta0 = fit$coefficients$beta0,
-                                                     beta = fit$coefficients$beta,
-                                                     gamma = fit$coefficients$gamma,
-                                                     covariates = fit$parameters$covariates,
-                                                     short_range = fit$coefficients$short_range,
-                                                     medium_range = fit$coefficients$medium_range,
-                                                     long_range = fit$coefficients$long_range,
-                                                     nthreads = 2,
-                                                     saturation = fit$parameters$saturation)
+lin_pred <- ppjsdm:::model_matrix_papangelou.default(
+   configuration = fit$configuration_list[[1]],
+   x = coords$x,
+   y = coords$y,
+   type = "tumor cells",
+   mark = 1.0,
+   model = fit$parameters$model,
+   medium_range_model = fit$parameters$medium_range_model,
+   alpha = fit$coefficients$alpha,
+   beta0 = fit$coefficients$beta0,
+   beta = fit$coefficients$beta,
+   gamma = fit$coefficients$gamma,
+   covariates = fit$parameters$covariates,
+   short_range = fit$coefficients$short_range,
+   medium_range = fit$coefficients$medium_range,
+   long_range = fit$coefficients$long_range,
+   nthreads = 2,
+   saturation = fit$parameters$saturation)
 
 lin_pred %>%
   dplyr::select(dplyr::contains("mr") | dplyr::contains("sr")) %>%
   tibble::rownames_to_column() %>%
-  tidyr::pivot_longer(-1, names_to = c(".value", "set"), names_sep = "[_]") -> d
+  tidyr::pivot_longer(-1, names_to = c(".value", "set"), 
+                      names_sep = "[_]") -> d
 
 sum_cols <- colnames(d)[-(1:2)]
 
 d <- d %>%
-  dplyr::mutate(overall = purrr::pmap_dbl(list(!!!rlang::parse_exprs(sum_cols)),sum)) %>%
-  tidyr::pivot_wider(names_from = set,values_from = c(!!!rlang::parse_exprs(sum_cols),overall))
+  dplyr::mutate(overall = purrr::pmap_dbl(list(!!!rlang::parse_exprs(sum_cols)),
+                                          sum)) %>%
+  tidyr::pivot_wider(names_from = set,
+                     values_from = c(!!!rlang::parse_exprs(sum_cols),overall))
 
 lin_pred <- lin_pred %>%
   tibble::rownames_to_column() %>%
@@ -281,7 +297,8 @@ top_linpred %>%
   mutate(top_pred = gsub("overall_","",top_pred)) %>%
   ggplot(aes(x,y,fill=top_pred)) +
   geom_tile() +
-  scale_fill_manual(values=as.vector(tableau20(n=length(unique(top_linpred$top_pred))))) +
+  scale_fill_manual(values=as.vector(
+    tableau20(n=length(unique(top_linpred$top_pred))))) +
   theme_minimal() +
   labs(x = "X (microns)", y = "Y (microns)",fill="Top \npredictor")
 ```
@@ -306,7 +323,8 @@ We can also visualize this conditional intensity for, eg, plasma cells:
 # plot papangelou
 plot_papangelous(papangelous,ppjsdm_fit,types = c("plasma cells"))[[1]] +
   theme_minimal() +
-  labs(title = "",x = "X (microns)",y = "Y (microns)", fill = "log-conditional \nintensity")
+  labs(title = "",x = "X (microns)",y = "Y (microns)", 
+       fill = "log-conditional \nintensity")
 ```
 
 ### INTEGRATING ACROSS MULTIPLE PATIENTS
@@ -414,21 +432,17 @@ alpha %>%
   left_join(gamma) %>%
   left_join(pt_data %>% select(Spot,Group)) %>%
   pivot_longer(c(alpha,gamma)) %>%
-  # filter(!(Spot %in% throwout_spots)) %>%
-  # mutate(Group = ifelse(Spot %in% throwout_spots,"DII",Group)) %>%
+
   group_by(type1,type2,name) %>%
   group_modify(~{
     tryCatch({
       wilcox.test(value ~ Group,data=.x,conf.int = T)
       },error=\(e) {
-        # print(e)
         NULL
       },warning=\(w) NULL) %>%
       broom::tidy()
-      # mutate(estimate = median(.x$value[.x$Group == "DII"] - .x$value[.x$Group == "CLR"]))
   }) %>%
   ungroup() %>%
-  # filter(!str_detect(term,"Intercept")) %>%
   mutate(p.adj = p.adjust(p.value)) %>%
   ggplot(aes(type1,type2,fill=estimate)) +
   geom_tile() +
@@ -521,15 +535,11 @@ gamma_df <- gamma %>%
 
 alpha_df <- alpha %>%
   left_join(pt_data) %>%
-  # group_by(type1,type2,Patient,OS,OS_Censor) %>%
-  # summarise(alpha=median(alpha,na.rm=T)) %>%
   group_by(type1,type2) %>%
   group_modify(~{
     tryCatch({
-      # lm(alpha~Group,data=.x)
       if(nrow(.x) < 10) stop("Sample size is too small!")
       coxph(Surv(OS,OS_Censor)~alpha+Age+Sex,data=.x,cluster=Patient)
-        # coxph(Surv(OS,OS_Censor)~alpha,data=.x)
     },
     error=\(e) {
       # print(e)
