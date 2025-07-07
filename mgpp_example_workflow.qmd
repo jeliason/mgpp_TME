@@ -2,11 +2,19 @@
 title: "Example workflow of fitting an MGPP model to tissue data"
 format:
   html:
-    embed-resources: true
+    embed-resources: false
 bibliography: refs.bib
 csl: nature.csl
 link-citations: true
 ---
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(
+#   # fig.width = 4,
+#   # fig.height = 3,
+#   # dpi = 72
+#   # out.width = "70%"
+# )
+```
 
 ```{r,message=FALSE,warning=FALSE}
 library(tidyverse)

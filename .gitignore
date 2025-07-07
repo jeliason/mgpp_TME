@@ -6,5 +6,4 @@
 *.Rproj
 *.html
 *_cache/
-*_files/
 renv*
